@@ -9,8 +9,9 @@
 
 需要在开发平台上实现两个文件
 1. head.S
-	![head.S文件截图]  (https://github.com/kongdehua/uboot/raw/master/image/firstExample_head.png "head.S文件截图")
+![head.S文件截图](https://github.com/kongdehua/uboot/raw/master/stage1/image/firstExample_head.png "head.S文件截图")
+
 2. Makefile
-	![Makefile文件截图](https://github.com/kongdehua/uboot/raw/master/image/firstExample_Makefile.png "Makefile文件截图")
+![Makefile文件截图](https://github.com/kongdehua/uboot/raw/master/stage1/image/firstExample_Makefile.png "Makefile文件截图")
 
 
