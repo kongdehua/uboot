@@ -1,5 +1,7 @@
 All description about this git repository
 
-空洞的
+1. 编写类似uboot的设备驱动程序
+	可以从uboot代码中拷贝
+![image](https://raw.githubusercontent.com/kongdehua/uboot/master/image/firstExample_head.jpg)
 
 
