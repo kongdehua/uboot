@@ -69,7 +69,11 @@ Each port can be easily configured by software to meet various system configurat
   Because each external interrupt pin has a digital filter, the interrupt controller can recognize the request signal that is longer than 3 clocks.
 
 ### PORT F CONTROL REGISTER (GPFCON, GPFDAT)
-![GPF控制寄存器](https://github.com/kongdehua/uboot/raw/master/stage1/image/ex_2/image/gpio_register.png "GPF控制寄存器")
+![GPF控制寄存器](https://github.com/kongdehua/uboot/raw/master/stage1/ex_2/image/gpio_register.png "GPF控制寄存器")
+![GPF控制寄存器续](https://github.com/kongdehua/uboot/raw/master/stage1/ex_2/image/gpio_register_2.png "GPF控制寄存器续")
 
 ### 分析
-从上图中可以看出
+从上图中可以看出，配置GPF4，GPF5，GPF6为输出端口，
+例如：
+将GPFCON的[9:8]设置为01，就表示GPF4端口的功能为输出；
+获取
