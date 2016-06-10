@@ -5,12 +5,24 @@
 #define GPFDAT (*(volatile unsigned long*)0x56000054)
 
 #define SET_TWO_BIT(ADDR, StartBit, VAL) \
-	ADDR &= ~(3 << StartBit);\
-  ADDR |= VAL << StartBit;
+	do\
+	{\
+		unsigned long l = ADDR;\
+    l &= (~(3 << StartBit));\
+		l |= (VAL << StartBit);\
+		ADDR = l;\
+	}\
+	while(0)
 
 #define SET_ONE_BIT(ADDR, StartBit, VAL) \
-	ADDR &= ~(1 << StartBit);\
-  ADDR |= VAL << StartBit;
+	do\
+	{\
+		unsigned long l = ADDR; \
+		l &= (~(1 << StartBit));\
+		l |= (VAL << StartBit) ;\
+		ADDR = l; \
+	}\
+	while(0)
 
 #define LED1_ENABLE() SET_TWO_BIT(GPFCON, 4*2, 1)
 #define LED2_ENABLE() SET_TWO_BIT(GPFCON, 5*2, 1)
@@ -36,3 +48,12 @@ int main()
 	return 0;
 };
 
+/*
+#define SET_TWO_BIT(ADDR, StartBit, VAL) \
+	ADDR &= ~(3 << StartBit);\
+  ADDR |= VAL << StartBit;
+
+#define SET_ONE_BIT(ADDR, StartBit, VAL) \
+	ADDR &= ~(1 << StartBit);\
+  ADDR |= VAL << StartBit;
+*/

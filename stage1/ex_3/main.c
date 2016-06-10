@@ -20,11 +20,10 @@
 #define SET_ONE_BIT(ADDR, StartBit, VAL) \
 	do\
 	{\
-		if (GET_ONE_BIT(ADDR, StartBit) != VAL) \
-		{ \
-		if (VAL == 0) ADDR &= (~(1 << StartBit));\
-		else          ADDR |=   (1 << StartBit) ;\
-		} \
+		unsigned long l = ADDR; \
+		l &= (~(1 << StartBit));\
+		l |= (VAL << StartBit) ;\
+		ADDR = l; \
 	}\
 	while(0)
 
@@ -75,3 +74,10 @@ int main()
 	return 0;
 };
 
+/*
+		if (GET_ONE_BIT(ADDR, StartBit) != VAL) \
+		{ \
+		if (VAL == 0) ADDR &= (~(1 << StartBit));\
+		else          ADDR |=   (1 << StartBit) ;\
+		} \
+*/
