@@ -3,6 +3,7 @@
 
 按键原理图
 ![按键原理图](https://github.com/kongdehua/uboot/raw/master/stage1/ex_3/image/switch.png "按键原理图")
+![按键原理图](https://github.com/kongdehua/uboot/raw/master/stage1/ex_3/image/switch2.png "按键原理图")
 
 控制管脚原理图
 ![控制管脚原理图](https://github.com/kongdehua/uboot/raw/master/stage1/ex_3/image/gpio_INT_0_2.png "控制管脚原理图")
