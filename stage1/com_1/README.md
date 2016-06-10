@@ -50,4 +50,9 @@ MPLL(FCLK)=(2*m*Fin)/(p*2^s)
 | 0     | 1     | -           | FCLK | HCLK  | PCLK/2 | 1:1:2  |
 |       |       |             |      |       |        |        |
 
+| HDIVN | PDIVN | HCLF3_HALF/ | FCLK | HCLK  | PCLK   | RESULT |
+|-------|-------|-------------|------|-------|--------|--------|
+| 0     | 0     | -           | FCLK | HCLK  | PCLK   | 1:1:1  |
+| 0     | 1     | -           | FCLK | HCLK  | PCLK/2 | 1:1:2  |
+
 对于S3C2440

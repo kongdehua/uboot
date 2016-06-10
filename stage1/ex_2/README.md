@@ -74,7 +74,7 @@ Each port can be easily configured by software to meet various system configurat
 	do\
 	{\
 		unsigned long l = ADDR;\
-    l &= (~(3 << StartBit));\
+		l &= (~(3 << StartBit));\
 		l |= (VAL << StartBit);\
 		ADDR = l;\
 	}\
