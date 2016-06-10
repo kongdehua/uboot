@@ -1,10 +1,12 @@
 # 第二个例子 `ex_2`
 实现点灯程序：程序中需要控制ARM芯片的多个引脚，每个引脚可以控制一个LED灯。
 
-LED原理图
+1. LED原理图
+
 ![LED原理图](https://github.com/kongdehua/uboot/raw/master/stage1/ex_2/image/led.png "LED原理图")
 
-控制管脚原理图
+2. 控制管脚原理图
+
 ![控制管脚原理图](https://github.com/kongdehua/uboot/raw/master/stage1/ex_2/image/gpio.png "控制管脚LED原理图")
 
 从上图中可以看出，LED D10的亮灭受nLED1引脚控制，
