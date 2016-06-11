@@ -43,16 +43,31 @@ MPLL(FCLK)=(2*m*Fin)/(p*2^s)
 
 3. CLKDIVN寄存器（CLOCK DIVIDER CONTROL）：用于设置FCLK、HCLK、PCLK三者之间的比例。
 
-| HDIVN | PDIVN | HCLF3_HALF/ | FCLK | HCLK  | PCLK   | RESULT |
-|       |       | HCLF4_HALF  |      |       |        |        |
-|-------|-------|-------------|------|-------|--------|--------|
-| 0     | 0     | -           | FCLK | HCLK  | PCLK   | 1:1:1  |
-| 0     | 1     | -           | FCLK | HCLK  | PCLK/2 | 1:1:2  |
-|       |       |             |      |       |        |        |
+HDIVN是CLKDIVN寄存器中的[2:1], PDIVN是位[0]；HCLK4_HALF、HCLK3_HALF分别为CAMDIVN寄存器中的位[9],[8]。
 
-| HDIVN | PDIVN | HCLF3_HALF/ | FCLK | HCLK  | PCLK   | RESULT |
-|-------|-------|-------------|------|-------|--------|--------|
-| 0     | 0     | -           | FCLK | HCLK  | PCLK   | 1:1:1  |
-| 0     | 1     | -           | FCLK | HCLK  | PCLK/2 | 1:1:2  |
+| HDIVN | PDIVN | HCLF3/4_HALF | FCLK | HCLK   | PCLK   | RESULT |
+|-------|-------|--------------|------|--------|--------|--------|
+| 0     | 0     | -            | FCLK | HCLK   | PCLK   | 1:1:1  |
+| 0     | 1     | -            | FCLK | HCLK   | PCLK/2 | 1:1:2  |
+| 1     | 0     | -            | FCLK | HCLK/2 | PCLK/2 | 1:2:2  |
+| 1     | 1     | -            | FCLK | HCLK/2 | PCLK/4 | 1:2:4  |
+| 3     | 0     | 0/0          | FCLK | HCLK/3 | PCLK/3 | 1:3:3  |
+| 3     | 1     | 0/0          | FCLK | HCLK/3 | PCLK/6 | 1:3:6  |
+| 3     | 0     | 1/0          | FCLK | HCLK/6 | PCLK/6 | 1:6:6  |
+| 3     | 1     | 1/0          | FCLK | HCLK/6 | PCLK/12| 1:6:12 |
+| 2     | 0     | 0/0          | FCLK | HCLK/4 | PCLK/4 | 1:4:4  |
+| 2     | 1     | 0/0          | FCLK | HCLK/4 | PCLK/8 | 1:4:8  |
+| 2     | 0     | 0/1          | FCLK | HCLK/8 | PCLK/8 | 1:8:8  |
+| 2     | 1     | 0/1          | FCLK | HCLK/8 | PCLK/16| 1:8:16 |
 
-对于S3C2440
+对于S3C2440，HDIVN是CLKDIVN寄存器中的位[2:1]。如果HDIVN非0，CPU的总线模式应该从“fast bus mode”变成“asynchronous bus mode”，否则CPU的工作频率将自动变成HCLK，而不再是FCLK。
+
+修改模式的代码：
+
+```c
+	mrc p15, 0, r0, c1, c0, 0
+	orr r0, r0, #R1_nF:OR:R1_iA
+	mrc p15, 0, r0, c1, c0, 0
+```
+
+其中“R1_nF:OR:R1_iA"等于0xC0000000。
