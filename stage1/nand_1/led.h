@@ -15,4 +15,16 @@
 #define LED2_OFF()    SET_ONE_BIT(GPFDAT, 5, 1)  
 #define LED4_OFF()    SET_ONE_BIT(GPFDAT, 6, 1)  
 
+void led1_on();
+
+void led1_off();
+
+void led2_on();
+
+void led2_off();
+
+void led4_on();
+
+void led4_off();
+
 #endif

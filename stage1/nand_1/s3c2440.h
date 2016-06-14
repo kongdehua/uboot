@@ -6,11 +6,12 @@
 typedef volatile u8  S3C2440_REG8;
 typedef volatile u32 S3C2440_REG32;
 
+#define CONFIG_BAUDRATE 115200
+#define CFG_MAXARGS   16    /* max number of command args */
+
 #define CLK_INPUT_FREQ 12000000
 
 #define S3C2440_CLOCK_POWER_BASE 0x4c000000
-
-#define CONFIG_BAUDRATE 115200
 
 #define WATCHDOG ((volatile unsigned long*)0x53000000)
 

@@ -4,6 +4,29 @@ OUTPUT_ARCH(arm)
 ENTRY(_start)
 SECTIONS
 {     
-	 first 0x30000000: { *.o }
-      
+	. = 0x00000000;
+
+	. = ALIGN(4);
+	.text       :
+	{
+		head.o(.text)
+			led.o(.text)
+			nand.o(.text)
+			*(.text)
+	}
+
+	. = ALIGN(4);
+	.rodata : { *(.rodata) }
+
+	. = ALIGN(4);
+	.data : { *(.data) }
+
+	. = ALIGN(4);
+	.got : { *(.got) }
+
+  . = .;
+  __u_boot_cmd_start = .;      
+  .u_boot_cmd : { *(.u_boot_cmd) }
+  __u_boot_cmd_end = .;        
+
 }

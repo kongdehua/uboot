@@ -1,13 +1,13 @@
-#include <stdarg.h>
 //#include <linux/types.h>
 //#include <linux/string.h>
 //#include <linux/ctype.h>
 
-#include <stdarg.h>
-#include <malloc.h>
+//#include <malloc.h>
 
+#include "string.h"
 #include "standard.h"
 #include "serial.h"
+#include "vsprintf.h"
 
 #define ZEROPAD	1		/* pad with zero */
 #define SIGN	2		/* unsigned/signed long */
@@ -111,7 +111,7 @@ size_t strnlen(const char * s, size_t count)
 	return sc - s;               
 }     
 
-void printf1 (const char *fmt, ...)
+void printf (const char *fmt, ...)
 {
 	va_list args;                
 	unsigned int i;
@@ -330,4 +330,10 @@ void serial_printf (const char *fmt, ...)
 
 	serial_puts (printbuffer);   
 }   
+
+void puts (const char *s)
+{   
+	/* Send directly to the handler */
+	serial_puts (s);
+}
 
