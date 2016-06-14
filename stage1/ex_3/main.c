@@ -53,8 +53,8 @@
 int main()
 {
 	LED1_ENABLE(); INT0_ENABLE();
-	LED4_ENABLE(); INT11_ENABLE();
 	LED2_ENABLE(); INT2_ENABLE();
+	LED4_ENABLE(); INT11_ENABLE();
 
 	while(1)
 	{
@@ -67,8 +67,6 @@ int main()
 		
 		if (GET_INT11()) LED4_ON();
 		else            LED4_OFF();
-	
-
 	}
 
 	return 0;

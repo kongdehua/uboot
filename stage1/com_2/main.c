@@ -1,157 +1,156 @@
-typedef unsigned int u32;
-typedef unsigned long ulong;
+//#include <common.h>
+#include <stdarg.h>
+#include <malloc.h>
 
-typedef volatile u32 S3C2440_REG32;
+#include "standard.h"
 
-#define GET_ONE_BIT(ADDR, StartBit)\
-	(ADDR & 1 << StartBit) >> StartBit
+#include "s3c2440.h"
+#include "global_data.h"
 
-#define GET_TWO_BIT(ADDR, StartBit)\
-	(ADDR & 3 << StartBit) >> StartBit
+#include "timer.h"
+#include "led.h"
+#include "vsprintf.h"
 
-#define CLK_INPUT_FREQ 12000000
+#define ENABLE_UART0_RX() \
+	SET_TWO_BIT(GPHCON, 2 * 2, 0x2); \
+	SET_ONE_BIT(GPHUP , 2, 0x1); \
 
-#define S3C2440_CLOCK_POWER_BASE 0x4c000000
+#define ENABLE_UART0_TX()\
+	SET_TWO_BIT(GPHCON, 3 * 2, 0x2); \
+	SET_ONE_BIT(GPHUP , 3, 0x1); \
 
-// CLOCK POWER MANAGEMENT
-typedef struct {
-	S3C2440_REG32 LOCKTIME;
-	S3C2440_REG32 MPLLCON;
-	S3C2440_REG32 UPLLCON;
-	S3C2440_REG32 CLKCON;
-	S3C2440_REG32 CLKSLOW;
-	S3C2440_REG32 CLKDIVN;
-	S3C2440_REG32 CAMDIVN;
-} CLOCK_POWER;
+#define ENABLE_UART0() \
+	ENABLE_UART0_RX(); \
+	ENABLE_UART0_TX(); 
 
-static CLOCK_POWER* GetBase_CLOCK_POWER()
-{
-	return (CLOCK_POWER*)S3C2440_CLOCK_POWER_BASE;
-}
-
-/*
-MPLLCON寄存器（Main PLL Control）：用于设置FCLK与Fin的倍数。
-位[19:12]的值成为MDIV，位[9:4]的值成为PDIV，位[1:0]的值成为SDIV。FCLK与Fin的关系计算公式如下：
-MPLL(FCLK)=(2*m*Fin)/(p*2^s)
-其中：m = MDIV+8, p = PDIV+2, s = SDIV。
-*/
-static ulong get_MPLLCLK()
-{
-	CLOCK_POWER * const clk_power = GetBase_CLOCK_POWER();
-	ulong mpll, m, p, s;
+DECLARE_GLOBAL_DATA_PTR;
 	
-	mpll = clk_power->MPLLCON;
-	m = (( (0xFF << 12) & mpll) >> 12) + 8;
-	p = (( (0x3F <<  4) & mpll) >>  4) + 2;
-	s = (0x03 & mpll);
+void initUART()
+{
+// 初始化UART
+	ENABLE_UART0();
+
+// 设置UART参数
+	S3C2440_UART * const uart = S3C2440_GetBase_UART(S3C2440_UART0);
+
+	// FIFO enable, Tx/Rx FIFO clear
+	uart->UFCON = 0x0;
+	uart->UMCON = 0x0;
+	// Normal, No parity, 1 stop, 8 bit
+	uart->ULCON = 0x3;
+	// tx=level, rx=edge, disable timeout int., enable rx error int.
+	uart->UCON  = 0x5;
+	//uart->UBRDIV = get_PCLK() / (16 * 115200) - 1;
+	uart->UBRDIV = 50000000 / (16 * 115200) - 1;
+
+	int i = 0;
+	for ( i = 0; i < 100; i++ )
+		;
+}
+
+int serial_getc(void)
+{
+	S3C2440_UART * const uart = S3C2440_GetBase_UART(S3C2440_UART0);
+	while (!(uart->UTRSTAT & 0x1));
 	
-	//return ((2 * m * CLK_INPUT_FREQ) / (p * (1 << s)));
-	return ((2 * m ) / p);
-	//return 0;
+	return uart->URXH & 0xFF;
 }
 
-static ulong get_FCLK()
+void serial_putc(const char c)
 {
-	return get_MPLLCLK();
-}
+	S3C2440_UART * const uart = S3C2440_GetBase_UART(S3C2440_UART0);
 
+	while (!(uart->UTRSTAT & 0x2));
+
+	uart->UTXH = c;
 /*
-HDIVN是CLKDIVN寄存器中的[2:1], PDIVN是位[0]；
-HCLK4_HALF、HCLK3_HALF分别为CAMDIVN寄存器中的位[9],[8]。
-
-| HDIVN | PDIVN | HCLF3/4_HALF | FCLK | HCLK   | PCLK   | RESULT |
-|-------|-------|--------------|------|--------|--------|--------|
-| 0     | 0     | -            | FCLK | HCLK   | PCLK   | 1:1:1  |
-| 0     | 1     | -            | FCLK | HCLK   | PCLK/2 | 1:1:2  |
-| 1     | 0     | -            | FCLK | HCLK/2 | PCLK/2 | 1:2:2  |
-| 1     | 1     | -            | FCLK | HCLK/2 | PCLK/4 | 1:2:4  |
-| 3     | 0     | 0/0          | FCLK | HCLK/3 | PCLK/3 | 1:3:3  |
-| 3     | 1     | 0/0          | FCLK | HCLK/3 | PCLK/6 | 1:3:6  |
-| 3     | 0     | 1/0          | FCLK | HCLK/6 | PCLK/6 | 1:6:6  |
-| 3     | 1     | 1/0          | FCLK | HCLK/6 | PCLK/12| 1:6:12 |
-| 2     | 0     | 0/0          | FCLK | HCLK/4 | PCLK/4 | 1:4:4  |
-| 2     | 1     | 0/0          | FCLK | HCLK/4 | PCLK/8 | 1:4:8  |
-| 2     | 0     | 0/1          | FCLK | HCLK/8 | PCLK/8 | 1:8:8  |
-| 2     | 1     | 0/1          | FCLK | HCLK/8 | PCLK/16| 1:8:16 |
+	LED1_ON();
+	delay(80000);
+	LED1_OFF();
 */
-static ulong get_HCLK()
-{
-	CLOCK_POWER * const clk_power = GetBase_CLOCK_POWER();
-	ulong hdivn = GET_TWO_BIT(clk_power->CLKDIVN, 1);
-	ulong pdivn = GET_ONE_BIT(clk_power->CLKDIVN, 0);
-	ulong hclf3 = GET_ONE_BIT(clk_power->CAMDIVN, 8);
-	ulong hclf4 = GET_ONE_BIT(clk_power->CAMDIVN, 9);
-
-	ulong scale = 0;
-	if ( hdivn < 2 )
+	if (c == '\n')
 	{
-		switch (hdivn << 3 | pdivn << 2)
-		{
-			case 0 << 3 | 0 << 2: scale = 1; break;
-			case 0 << 3 | 1 << 2: scale = 1; break;
-			case 1 << 3 | 0 << 2: scale = 2; break;
-			case 1 << 3 | 1 << 2: scale = 2; break;
-		}
+		serial_putc('\r');
 	}
-	else
-	{
-		switch (hdivn << 3 | pdivn << 2 | hclf3 << 1 | hclf4 << 0)
-		{
-			case 3 << 3 | 0 << 2 | 0 << 1 | 0 << 0: scale = 3; break;
-			case 3 << 3 | 1 << 2 | 0 << 1 | 0 << 0: scale = 3; break;
-			case 3 << 3 | 0 << 2 | 1 << 1 | 0 << 0: scale = 6; break;
-			case 3 << 3 | 1 << 2 | 1 << 1 | 0 << 0: scale = 6; break;
-
-			case 2 << 3 | 0 << 2 | 0 << 1 | 0 << 0: scale = 4; break;
-			case 2 << 3 | 1 << 2 | 0 << 1 | 0 << 0: scale = 4; break;
-			case 2 << 3 | 0 << 2 | 0 << 1 | 1 << 0: scale = 8; break;
-			case 2 << 3 | 1 << 2 | 0 << 1 | 1 << 0: scale = 8; break;
-		}
-	}
-
-	return get_FCLK() / scale;
 }
 
-static ulong get_PCLK()
+void serial_puts (const char *s)
 {
-	CLOCK_POWER * const clk_power = GetBase_CLOCK_POWER();
-	ulong hdivn = GET_TWO_BIT(clk_power->CLKDIVN, 1);
-	ulong pdivn = GET_ONE_BIT(clk_power->CLKDIVN, 0);
-	ulong hclf3 = GET_ONE_BIT(clk_power->CAMDIVN, 8);
-	ulong hclf4 = GET_ONE_BIT(clk_power->CAMDIVN, 9);
-
-	ulong scale = 0;
-	if ( hdivn < 2 )
+	while (*s)
 	{
-		switch (hdivn << 3 | pdivn << 2)
-		{
-			case 0 << 3 | 0 << 2: scale = 1; break;
-			case 0 << 3 | 1 << 2: scale = 2; break;
-			case 1 << 3 | 0 << 2: scale = 2; break;
-			case 1 << 3 | 1 << 2: scale = 4; break;
-		}
+		serial_putc(*s++);
 	}
-	else
-	{
-		switch (hdivn << 3 | pdivn << 2 | hclf3 << 1 | hclf4 << 0)
-		{
-			case 3 << 3 | 0 << 2 | 0 << 1 | 0 << 0: scale = 3; break;
-			case 3 << 3 | 1 << 2 | 0 << 1 | 0 << 0: scale = 6; break;
-			case 3 << 3 | 0 << 2 | 1 << 1 | 0 << 0: scale = 6; break;
-			case 3 << 3 | 1 << 2 | 1 << 1 | 0 << 0: scale =12; break;
-
-			case 2 << 3 | 0 << 2 | 0 << 1 | 0 << 0: scale = 4; break;
-			case 2 << 3 | 1 << 2 | 0 << 1 | 0 << 0: scale = 8; break;
-			case 2 << 3 | 0 << 2 | 0 << 1 | 1 << 0: scale = 8; break;
-			case 2 << 3 | 1 << 2 | 0 << 1 | 1 << 0: scale =16; break;
-		}
-	}
-
-	return get_FCLK() / scale;
 }
+
+void init_baudrate()
+{
+	gd->baudrate = CONFIG_BAUDRATE;
+}
+
+void DisableWatchdog()
+{
+	WATCHDOG = 0;
+}
+
+/** U-Boot INITIAL CONSOLE-NOT COMPATIBLE FUNCTIONS *************************/
+void serial_printf (const char *fmt, ...)
+{   
+	va_list args;
+	unsigned int i;
+	char printbuffer[CFG_PBSIZE];
+
+	va_start (args, fmt);        
+
+	/* For this to work, printbuffer must be larger than
+	 * anything we ever want to print.
+	 */
+	//i = vsprintf (printbuffer, fmt, args);
+	va_end (args);               
+
+	serial_puts (printbuffer);   
+}   
 
 int main()
 {
+	LED1_ENABLE();
+	LED1_ON();
+
+/*
+	LED1_ON();
+	delay(800000);
+	LED1_OFF();
+*/
+
+	unsigned char ch = '\0';
+	init_baudrate();
+	clock_init();
+
+	initUART();
+	
+	serial_putc('c'); 
+	serial_putc('o'); 
+	serial_putc('d'); 
+	serial_putc('e'); 
+	serial_putc('\n'); 
+	serial_putc('\n'); 
+
+	ch = '\n';
+	serial_putc(ch/10+'0'); 
+	serial_putc(ch%10+'0'); 
+	serial_putc(' '); 
+
+	//printf1("pclk scale is %d\n", get_PCLK());
+	
+	while(1)
+	{
+		ch = serial_getc();
+
+		//if (ch <= '9' && ch >= '0')
+		if (ch == '\r')
+			ch = '\n';
+		serial_putc(ch);
+	};
+
 	return 0;
 };
 
