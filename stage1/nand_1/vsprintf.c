@@ -331,9 +331,3 @@ void serial_printf (const char *fmt, ...)
 	serial_puts (printbuffer);   
 }   
 
-void puts (const char *s)
-{   
-	/* Send directly to the handler */
-	serial_puts (s);
-}
-

@@ -24,6 +24,10 @@ extern char * strcpy(char *,const char *);
 extern char * strchr(const char *,int);
 #endif
 
+#ifndef __HAVE_ARCH_STRCMP     
+extern int strcmp(const char *,const char *);
+#endif
+
 #ifndef __HAVE_ARCH_STRNCMP
 extern int strncmp(const char *,const char *,__kernel_size_t);
 #endif

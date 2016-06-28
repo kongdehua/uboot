@@ -10,10 +10,11 @@
 #include "led.h"
 #include "vsprintf.h"
 
-DECLARE_GLOBAL_DATA_PTR;
+#define DEBUG_PARSER 1
 
 void init_baudrate()
 {
+	DECLARE_GLOBAL_DATA_PTR;
 	gd->baudrate = CONFIG_BAUDRATE;
 }
 
@@ -75,6 +76,8 @@ int parse_line (char *line, char *argv[])
  */
 cmd_tbl_t *find_cmd (const char *cmd)
 {     
+	printf("find_cmd: %s\n", cmd);
+
   cmd_tbl_t *cmdtp;
   cmd_tbl_t *cmdtp_temp = &__u_boot_cmd_start;  /*Init value */
   const char *p;
@@ -103,6 +106,115 @@ cmd_tbl_t *find_cmd (const char *cmd)
   }
 
   return NULL;  /* not found or ambiguous command */
+}
+static void process_macros (const char *input, char *output)
+{
+  char c, prev;
+  const char *varname_start = NULL;
+  int inputcnt = strlen (input);
+  int outputcnt = CFG_CBSIZE;
+  int state = 0;    /* 0 = waiting for '$'  */
+
+  /* 1 = waiting for '(' or '{' */
+  /* 2 = waiting for ')' or '}' */
+  /* 3 = waiting for '''  */
+#ifdef DEBUG_PARSER
+  char *output_start = output;
+
+  printf ("[PROCESS_MACROS] INPUT len %d: \"%s\"\n", strlen (input),
+    input);
+#endif
+
+  prev = '\0';    /* previous character   */
+
+  while (inputcnt && outputcnt) {
+    c = *input++;
+    inputcnt--;
+
+    if (state != 3) {
+      /* remove one level of escape characters */
+      if ((c == '\\') && (prev != '\\')) {
+        if (inputcnt-- == 0)
+          break;
+        prev = c;
+        c = *input++;
+      }
+    }
+
+    switch (state) {
+    case 0: /* Waiting for (unescaped) $    */
+      if ((c == '\'') && (prev != '\\')) {
+        state = 3;
+        break;
+      }
+      if ((c == '$') && (prev != '\\')) {
+        state++;
+      } else {
+        *(output++) = c;
+        outputcnt--;
+      }
+      break;
+    case 1: /* Waiting for (        */
+      if (c == '(' || c == '{') {
+        state++;
+        varname_start = input;
+      } else {
+        state = 0;
+        *(output++) = '$';
+        outputcnt--;
+
+        if (outputcnt) {
+          *(output++) = c;
+          outputcnt--;
+        }
+      }
+      break;
+    case 2: /* Waiting for )        */
+      if (c == ')' || c == '}') {
+        int i;
+        char envname[CFG_CBSIZE], *envval;
+        int envcnt = input - varname_start - 1; /* Varname # of chars */
+       /* Get the varname */
+        for (i = 0; i < envcnt; i++) {
+          envname[i] = varname_start[i];
+        }
+        envname[i] = 0;
+
+/*
+        // Get its value 
+        envval = getenv (envname);
+
+        // Copy into the line if it exists
+        if (envval != NULL)
+          while ((*envval) && outputcnt) {
+            *(output++) = *(envval++);
+            outputcnt--;
+          }
+*/
+
+        // Look for another '$' 
+        state = 0;
+      }
+      break;
+    case 3: /* Waiting for '        */
+      if ((c == '\'') && (prev != '\\')) {
+        state = 0;
+      } else {
+        *(output++) = c;
+        outputcnt--;
+      }
+      break;
+    }
+    prev = c;
+  }
+
+  if (outputcnt)
+    *output = 0;
+
+#ifdef DEBUG_PARSER
+  printf ("[PROCESS_MACROS] OUTPUT len %d: \"%s\"\n",
+    strlen (output_start), output_start);
+#endif
 }
 
 
@@ -137,6 +249,7 @@ int run_command (const char *cmd, int flag)
   int repeatable = 1;
   int rc = 0;
 
+  printf ("[PROCESS_SEPARATORS] %s\n", cmd);
   //clear_ctrlc();    /* forget any previous Control C */
 
   if (!cmd || !*cmd) {
@@ -154,6 +267,7 @@ int run_command (const char *cmd, int flag)
    * repeatable commands
    */
 
+  printf ("[PROCESS_SEPARATORS] %s\n", cmd);
 #ifdef DEBUG_PARSER
   printf ("[PROCESS_SEPARATORS] %s\n", cmd);
 #endif
@@ -187,10 +301,12 @@ int run_command (const char *cmd, int flag)
       str = sep;  /* no more commands for next pass */
 #ifdef DEBUG_PARSER
     printf ("token: \"%s\"\n", token);
+    printf ("finaltoken: \"%s\"\n", finaltoken);
+    printf ("argv[0]: \"%s\"\n", argv[0]);
 #endif
 
     /* find macros in this token and replace them */
-    //process_macros (token, finaltoken);
+    process_macros (token, finaltoken);
 
     /* Extract arguments */
     if ((argc = parse_line (finaltoken, argv)) == 0) {
@@ -243,6 +359,22 @@ int run_command (const char *cmd, int flag)
   return rc ? rc : repeatable;
 }
 
+int ctrlc (void)
+{ 
+  if (!ctrlc_disabled ) {
+    if (tstc ()) { 
+      switch (getc ()) {
+      case 0x03:    /* ^C - Control C */
+        ctrlc_was_pressed = 1;
+        return 1;
+      default:
+        break;
+      }
+    }
+  }
+  return 0;
+}
+
 /* pass 1 to disable ctrlc() checking, 0 to enable.
  * returns previous state
  */
@@ -264,163 +396,8 @@ void clear_ctrlc (void)
   ctrlc_was_pressed = 0;
 } 
 
-char        console_buffer[CFG_CBSIZE];   /* console I/O buffer */
 
-static char * delete_char (char *buffer, char *p, int *colp, int *np, int plen);
-static char erase_seq[] = "\b \b";    /* erase sequence */
-static char   tab_seq[] = "        ";   /* used to expand TABs  */
-
-
-/** U-Boot INITIAL CONSOLE-COMPATIBLE FUNCTION *****************************/
-
-int getc (void)                
-{
-  /* Send directly to the handler */
-  return serial_getc ();       
-}
-
-void putc (const char c)
-{
-	/* Send directly to the handler */
-	serial_putc (c);
-}
-
-static char * delete_char (char *buffer, char *p, int *colp, int *np, int plen)
-{
-  char *s;
-
-  if (*np == 0) {
-    return (p);
-  }
-
-  if (*(--p) == '\t') {     /* will retype the whole line */
-    while (*colp > plen) {
-      puts (erase_seq);
-      (*colp)--;
-    }
-    for (s=buffer; s<p; ++s) {
-      if (*s == '\t') {
-        puts (tab_seq+((*colp) & 07));
-        *colp += 8 - ((*colp) & 07);
-      } else {
-        ++(*colp);
-        putc (*s);
-      }
-    }
-  } else {
-    puts (erase_seq);
-    (*colp)--;
-  }
-  (*np)--;
-  return (p);
-}
-
-
-/*
- * Prompt for input and read a line.
- * If  CONFIG_BOOT_RETRY_TIME is defined and retry_time >= 0,
- * time out when time goes past endtime (timebase time in ticks).
- * Return:  number of read characters
- *    -1 if break
- *    -2 if timed out
- */
-int readline (const char *const prompt)
-{
-  char   *p = console_buffer;
-
-  int n = 0;        /* buffer index   */
-  int plen = 0;     /* prompt length  */
-  int col;        /* output column cnt  */
-  char  c;
-
-  /* print prompt */
-  if (prompt) {
-    plen = strlen (prompt);
-    puts (prompt);
-  }
-  col = plen;
-
-  for (;;) {
-#ifdef CONFIG_BOOT_RETRY_TIME
-    while (!tstc()) { /* while no incoming data */
-      if (retry_time >= 0 && get_ticks() > endtime)
-        return (-2);  /* timed out */
-    }
-#endif
-
-#ifdef CONFIG_SHOW_ACTIVITY
-    while (!tstc()) {
-      extern void show_activity(int arg);
-      show_activity(0);
-    }
-#endif
-    c = getc();
-    /*
-     * Special character handling
-     */
-    switch (c) {
-    case '\r':        /* Enter    */
-    case '\n':
-      *p = '\0';
-      puts ("\r\n");
-      return (p - console_buffer);
-
-    case '\0':        /* nul      */
-      continue;
-
-    case 0x03:        /* ^C - break   */
-      console_buffer[0] = '\0'; /* discard input */
-      return (-1);
-
-    case 0x15:        /* ^U - erase line  */
-      while (col > plen) {
-        puts (erase_seq);
-        --col;
-      }
-      p = console_buffer;
-      n = 0;
-      continue;
-
-    case 0x17:        /* ^W - erase word  */
-      p=delete_char(console_buffer, p, &col, &n, plen);
-      while ((n > 0) && (*p != ' ')) {
-        p=delete_char(console_buffer, p, &col, &n, plen);
-      }
-      continue;
-
-    case 0x08:        /* ^H  - backspace  */
-    case 0x7F:        /* DEL - backspace  */
-      p=delete_char(console_buffer, p, &col, &n, plen);
-      continue;
-
-    default:
-      /*
-       * Must be a normal character then
-       */
-      if (n < CFG_CBSIZE-2) {
-        if (c == '\t') {  /* expand TABs    */
-#ifdef CONFIG_AUTO_COMPLETE
-          /* if auto completion triggered just continue */
-          *p = '\0';
-          if (cmd_auto_complete(prompt, console_buffer, &n, &col)) {
-            p = console_buffer + n; /* reset */
-            continue;
-          }
-#endif
-          puts (tab_seq+(col&07));
-          col += 8 - (col&07);
-        } else {
-          ++col;    /* echo input   */
-          putc (c);
-        }
-        *p++ = c;
-        ++n;
-      } else {      /* Buffer full    */
-        putc ('\a');
-      }
-    }
-  }
-}
+extern char        console_buffer[CFG_CBSIZE];   /* console I/O buffer */
 
 int main()
 {
@@ -430,28 +407,34 @@ int main()
 
 	int i = 0;
 
-	LED1_ENABLE();
-	LED1_ON();
+	clock_init();
+	led1_on();
 
 	init_baudrate();
+	led2_on();
 	//clock_init();
 
 	initUART();
 
-	int len = 0;
-  for (;;) {
-    len = readline (CFG_PROMPT);
-    if (len == -1)
-      puts ("<INTERRUPT>\n");
-    else
-      run_command (lastcommand, flag);
-}
-
-	//printf1("code\n");
 	serial_putc('c'); 
 	serial_putc('d'); 
 	serial_putc('o'); 
 	printf("11 is %d\n", 11);
+
+	int len = 0;
+  for (;;) {
+    len = readline (CFG_PROMPT);
+		
+		if (len > 0)
+			strcpy(lastcommand, console_buffer);
+
+    if (len == -1)
+      puts ("<INTERRUPT>\n");
+    else
+			run_command (lastcommand, flag);
+}
+
+	//printf1("code\n");
 	//printf1("11.1 is %s\n", "kdh");
 
 /*

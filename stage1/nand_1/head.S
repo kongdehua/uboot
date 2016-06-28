@@ -4,26 +4,21 @@
 .text
 .global _start
 _start:
-	ldr sp, =#4096
+	ldr sp, =#34000000
 	bl  disable_watch_dog               @ 关闭WATCHDOG，否则CPU会不断重启
-	bl  memsetup                        @ 设置存储控制器
-	bl led2_on
-	bl  clock_init
-	bl led1_on
+	//bl  memsetup                        @ 设置存储控制器
 
-
-	bl nand_init
+	//bl nand_init
 
 	ldr     r0,     =0x30000000     @1. 目标地址=0x30000000，这是SDRAM的起始地址
 	mov     r1,     #0              @2.  源地址   = 4096，连接的时候，main.c中的代码都存在NAND Flash地址4096开始处
-	mov     r2,     #15360          @3.  复制长度= 2048(bytes)，对于本实验的main.c，这是足够了
-	bl      nand_read               @调用C函数nand_read
+	mov     r2,     #0x4000          @3.  复制长度= 2048(bytes)，对于本实验的main.c，这是足够了
+	//bl      nand_read               @调用C函数nand_read
 	@nand_read((unsigned char *)0x300000000, 0, 8192);
 
-	@bl  copy_steppingstone_to_sdram     @ 复制代码到SDRAM中
+	//bl  copy_steppingstone_to_sdram     @ 复制代码到SDRAM中
 
-	ldr pc, =on_sdram                   @ 跳到SDRAM中继续执行
-
+	//ldr pc, =on_sdram                   @ 跳到SDRAM中继续执行
 on_sdram:
 	ldr sp, =0x34000000                 @ 设置堆栈
 	

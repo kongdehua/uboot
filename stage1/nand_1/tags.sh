@@ -4,6 +4,9 @@ ROOT=$PWD
 
 echo ${ROOT}
 
+rm cscope.*
+rm tags
+
 find ${ROOT} \
 	-path "$ROOT/*/*"                                                 -o \
 	-name "*.[.chsS]" -print > $ROOT/cscope.files
