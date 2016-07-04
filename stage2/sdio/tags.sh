@@ -8,9 +8,9 @@ rm cscope.*
 rm tags
 
 find ${ROOT} \
-	-path "$ROOT/*/*"                                                 -o \
 	-name "*.[.chsS]" -print > $ROOT/cscope.files
 
+#	-path "$ROOT/*/*"                                                 -o \
 # generate the cscope file
 cscope -bkq -i $ROOT/cscope.files
 

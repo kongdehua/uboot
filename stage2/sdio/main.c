@@ -398,25 +398,30 @@ void clear_ctrlc (void)
 
 extern char        console_buffer[CFG_CBSIZE];   /* console I/O buffer */
 
+#include "fatfs/ff.h"
+
 int main()
 {
 	unsigned char ch = '\0';
   static char lastcommand[CFG_CBSIZE] = { 0, };
 	int flag = 0;
-
 	int i = 0;
 
 	clock_init();
-	led1_on();
+	initUART();
+	if (SD_OK != sdio_Initialize())
+	{
+		printf("sd card init error");
+		while(1);
+	}
+	//led1_on();
 
 	//init_baudrate();
-	led2_on();
+	//led2_on();
 	//clock_init();
 
-	initUART();
-
-	sdio_poweron();
-	sdio_Initialize();
+	//sdio_poweron();
+	//sdio_Initialize();
 
 /*
 	serial_putc('c'); 
@@ -425,9 +430,24 @@ int main()
 	printf("11 is %d\n", 11);
 */
 
-	printf("xyz.blk cblk is \n");
-	run_command ("download", 0);
+	//printf("xyz.blk cblk is \n");
+	//run_command ("download", 0);
 
+	FATFS file;
+	int res = f_mount(&file,"0:",1);
+	/*
+	if(res==0X0D)//FLASH磁盘,FAT文件系统错误,重新格式化FLASH
+	{
+		res=f_mkfs("0:",1,4096);//格式化FLASH,1,盘符;1,不需要引导区,8个扇区为1个簇
+		if(res==0)
+		{
+			f_setlabel((const TCHAR *)"0:ALIENTEK");	//设置Flash磁盘的名字为：ALIENTEK
+			printf("Flash Disk Format Finish\n");	//格式化完成
+		}else printf("Flash Disk Format Error \n");	//格式化失败
+	}													    
+	*/
+
+	
 	int len = 0;
   for (;;) {
     len = readline (CFG_PROMPT);

@@ -12,6 +12,7 @@ SD_API_STATUS SendCommand(short Cmd, int Arg,
 		short respType, BOOL bDataTransfer);
 
 SD_CARD_TYPE g_enType = SD_CARD_UNKNOWN;
+SD_CARD_STATUS g_enStatus = SD_CARD_UNUSED;
 
 SD_Error sdio_init_power_on()
 {
@@ -299,24 +300,11 @@ int sdio_poweron(void)
 	return SD_OK;
 }
 
-SD_Error sdio_Initialize(void)
+SD_Error sdio_select_card(unsigned short RCA)
 {
-	unsigned short RCA = 0;
-	u32 CSD_Tab[4] = {0};
+	unsigned char response[20] = {0};
 	S3C2440_SDI* sdi = S3C2440_GetBase_SDI();
 
-	if (SD_OK != sdio_CMD2())                { printf("cmd2 error\n"); return SD_COMMAND_ERROR;}
-	if (SD_OK != sdio_CMD3(&RCA))            { printf("cmd3 error\n"); return SD_COMMAND_ERROR;}
-
-	printf("PCLK is %d\n", get_PCLK());
-	sdi->SDIPRE = get_PCLK() / SDCLK - 1;
-
-	printf("SD Frequency is %dHz\n",(get_PCLK()/(sdi->SDIPRE+1)));
-	printf("SDIPRE is %d\n",(sdi->SDIPRE));
-
-	if (SD_OK != sdio_CMD9(RCA, CSD_Tab))  { printf("cmd9 error\n"); return SD_COMMAND_ERROR;}
-
-	unsigned char response[20] = {0};
 	// CMD7
 	if ( SD_API_STATUS_SUCCESS != SendCommand(7, RCA<<16, ResponseR1b, FALSE))
 	{
@@ -332,7 +320,16 @@ SD_Error sdio_Initialize(void)
 		printf("%x ", response[i]);
 	}
 	if( sdi->SDIRSP0 & 0x1e00!=0x800 ) printf("cmd7 error\n");
+}
 
+SD_Error sdio_send_csd(unsigned short RCA, u32 CSD_Tab[4])
+{
+	if (SD_OK != sdio_CMD9(RCA, CSD_Tab))  { printf("cmd9 error\n"); return SD_COMMAND_ERROR;}
+	return SD_OK;
+}
+
+SD_Error sdio_setDataBusWidth(unsigned short RCA, int width)
+{
 	unsigned char result[6] = {0};
 	////////////////////////////////////////////////////////////////////////////////
 	// ACMD6
@@ -355,77 +352,108 @@ SD_Error sdio_Initialize(void)
 	}
 
 	printf("cmd ACMD6 response is:\n");
-	printf("%x\n", sdi->SDIRSP0);
 	for (int i = 0; i < 6; i++)
 	{
 		printf("%x ", result[i]);
 	}
 	printf("\n");
+}
 
-	unsigned char buf[512] = {0x12, 0x34, 0x56, 0x78, 0x90};
-	unsigned char *Tx_buf = buf;
-	long long addr = 0;
+SD_Error sdio_Initialize(void)
+{
+	unsigned short RCA = 0;
+	u32 CSD_Tab[4] = {0};
+	S3C2440_SDI* sdi = S3C2440_GetBase_SDI();
+
+	SD_Error error = sdio_poweron();
+	if (SD_OK == error) g_enStatus =  SD_CARD_READY;
+
+	return error;
+}
+
+SD_Error sdio_ScanCard(unsigned short *pRCA)
+{
+	if (g_enStatus != SD_CARD_READY) return SD_STATUS_ERROR;
+
+	S3C2440_SDI* sdi = S3C2440_GetBase_SDI();
+
+	if (SD_OK != sdio_CMD2())                { printf("cmd2 error\n"); return SD_COMMAND_ERROR;}
+	if (SD_OK != sdio_CMD3(pRCA))            { printf("cmd3 error\n"); return SD_COMMAND_ERROR;}
+
+	printf("PCLK is %d\n", get_PCLK());
+	sdi->SDIPRE = get_PCLK() / SDCLK - 1;
+
+	printf("SD Frequency is %dHz\n",(get_PCLK()/(sdi->SDIPRE+1)));
+	printf("SDIPRE is %d\n",(sdi->SDIPRE));
+
+	g_enStatus =  SD_CARD_STANDBY;
+	return SD_OK;
+}
+
+
+SD_Error sdio_SelectCard(unsigned short RCA)
+{
+	if (g_enStatus != SD_CARD_STANDBY) return SD_STATUS_ERROR;
+	sdio_select_card(RCA);
+	sdio_setDataBusWidth(RCA, 0);
+
+	g_enStatus = SD_CARD_CARD_SELECTED;
+	return SD_OK;
+}
+
+SD_Error sdio_ReadData (      u8 *buff, u32 sector, u8 count)
+{
+	if (g_enStatus != SD_CARD_CARD_SELECTED) return SD_STATUS_ERROR;
+
+	unsigned char response[20] = {0};
 	u16 sizeBlk = 512;
-	addr >>= 9;
+	S3C2440_SDI* sdi = S3C2440_GetBase_SDI();
 
-	for (int nIndex = 0; nIndex < 512; nIndex++)
-	{
-	buf[nIndex] = 0x66;
-	}
-	int block = 1;
+	int block  = count;
 	int wt_cnt = 0;
 	int status = 0;
 
-	/*
-	u32 cardstatus = 0;
-	u32 timeout = 200;
-	do
-	{
-		timeout--;
-		if ( SD_API_STATUS_SUCCESS != SendCommand(13, RCA<<16, ResponseR1, FALSE))
-		{
-			printf("cmd13 error");
-		}
-		if ( SD_API_STATUS_SUCCESS != GetCommandResponse(response, ResponseR1))
-		{
-			printf("cmd13 response error");
-		}
-		cardstatus=sdi->SDIRSP0;                           
-	} while (((cardstatus&0x00000100)==0)&&(timeout>0));
-	//if(timeout==0)return SD_ERROR;
-	printf("\n55555555555555555555\n");
-	*/
+	sdi->SDIDatCon = sdi->SDIDatCon &~(7<<12);   //YH 040220, Clear Data Transfer mode => no operation, Cleata Data Transfer start
+	sdi->SDIDatSta=0x10;  // Clear data Tx/Rx end
 
-	sdi->SDIDTimer=0x7fffff;		// Set timeout count
-	sdi->SDIBSize=0x200;			// 512byte(128word)
-	sdi->SDIFSTA = sdi->SDIFSTA|(1<<16); // FIFO reset
+	//***********************************************************************
+	u32 mode = 0 ;
+	int rd_cnt = 0;
+	unsigned char *Rx_buffer = buff;
+	sdi->SDIFSTA = sdi->SDIFSTA|(1<<16);  // FIFO reset
+	sdi->SDIDatCon =(2<<22)|(1<<19)|(1<<17)|(1<<16)|(1<<14)|(2<<12)|(block<<0); //
 
-	//************************************************************************
-	sdi->SDIFSTA = sdi->SDIFSTA | (1<<16);
-	sdi->SDIDatCon = (2<<22)|(1<<20)|(1<<17)|(1<<16)|(1<<14)|(3<<12)|(block<<0);
-	if ( SD_API_STATUS_SUCCESS != SendCommand(24, 0x0, ResponseR1, FALSE))
+	int CMD = 17;
+	if (block>=2) CMD=18;
+
+	if ( SD_API_STATUS_SUCCESS != SendCommand(CMD, sector, ResponseR1, FALSE))
 	{
-		printf("cmd24 error");
+		printf("cmd17 error");
 	}
 	if ( SD_API_STATUS_SUCCESS != GetCommandResponse(response, ResponseR1))
 	{
-		printf("cmd24 response error");
+		printf("cmd17 response error");
 	}
 	sdi->SDICmdSta=0xa00; // Clear cmd_end(with rsp)       
 
-	while(wt_cnt<sizeBlk*block/4)  
-	{
-		status=sdi->SDIFSTA;
-		if((status&0x2000)==0x2000) 
-		{
-			sdi->SDIDAT=(*Tx_buf) | *(Tx_buf+1)<<8 | *(Tx_buf+1)<<16 | *(Tx_buf+1)<<24 ;    
-			Tx_buf+=4;
-			wt_cnt++;
-			//Uart_Printf("Block No.=%d, wt_cnt=%d\n",block,wt_cnt);
-		}
+	while(rd_cnt<128*block) // 512*block bytes 
+	{ 
+		if((sdi->SDIDatSta&0x20)==0x20) // Check timeout  
+		{ 
+			sdi->SDIDatSta=(0x1<<0x5);  // Clear timeout flag 
+			break; 
+		} 
+		status=sdi->SDIFSTA; 
+		if((status&0x1000)==0x1000) // Is Rx data? 
+		{ 
+			u32 dat = sdi->SDIDAT;
+			*Rx_buffer++= (dat& 0xFF000000) >> 24; 
+			*Rx_buffer++= (dat& 0xFF0000) >> 16; 
+			*Rx_buffer++=  (dat& 0xFF00) >> 8; 
+			*Rx_buffer++= dat& 0xFF; 
+			rd_cnt++; 
+		} 
 	}
-
-	printf("\n111111111111111111\n");
 
 	int finish = sdi->SDIDatSta;
 	// Chek timeout or data end
@@ -441,58 +469,108 @@ SD_Error sdio_Initialize(void)
 	//return 1;
 
 	sdi->SDIDatCon = sdi->SDIDatCon &~(7<<12);   //YH 040220, Clear Data Transfer mode => no operation, Cleata Data Transfer start
+	sdi->SDIDatSta=sdi->SDIDatSta&0x200;  //Clear Rx FIFO Last data Ready, YH 040221
 	sdi->SDIDatSta=0x10;  // Clear data Tx/Rx end
 
-
-	for (int nIndex = 0; nIndex < 512; nIndex++)
+	if(block>1)
 	{
-		buf[nIndex] = 0;
+		//--Stop cmd(CMD12)          
+		if ( SD_API_STATUS_SUCCESS != SendCommand(12, sector, ResponseR1b, FALSE))
+		{
+			printf("cmd12 error");
+		}
+		if ( SD_API_STATUS_SUCCESS != GetCommandResponse(response, ResponseR1b))
+		{
+			printf("cmd12 response error");
+		}
+
+		sdi->SDICmdSta=0xa00; // Clear cmd_end(with rsp)
+
+
+		/*
+		int finish = sdi->SDIDatSta;
+		// Chek timeout or data end
+		while( !( ((finish&0x08)==0x08) | ((finish&0x20)==0x20) ))  
+			finish=sdi->SDIDatSta;
+
+		if( (finish&0xfc) != 0x08 )
+		{
+			printf("DATA:finish=0x%x\n", finish);
+			sdi->SDIDatSta=0xf4;  // Clear error state
+			return 0;
+		}
+
+		sdi->SDIDatSta=0x08;  //! Should be cleared by writing '1'.
+		*/
 	}
+	sdi->SDICmdSta=0x800; // Clear cmd_end(no rsp)
 
-	//***********************************************************************
-	u32 mode = 0 ;
-	int rd_cnt = 0;
-	unsigned char *Rx_buffer = buf;
-	sdi->SDIFSTA = sdi->SDIFSTA|(1<<16);  // FIFO reset
-	sdi->SDIDatCon =(2<<22)|(1<<19)|(1<<17)|(1<<16)|(1<<14)|(2<<12)|(block<<0); //
-
-	if ( SD_API_STATUS_SUCCESS != SendCommand(17, 0x0, ResponseR1, FALSE))
+	/*
+	for (int nBlock = 0; nBlock < block; nBlock++)
 	{
-		printf("cmd17 error");
+		for (int nIndex = 0; nIndex < 512; nIndex++)
+		{
+			printf("%x ", buff[nBlock*512 + nIndex]);
+		}
+	}
+	*/
+	return SD_OK;
+}
+
+SD_Error sdio_WriteData(const u8 *buff, u32 sector, u8 count)
+{
+	if (g_enStatus != SD_CARD_CARD_SELECTED) return SD_STATUS_ERROR;
+
+	unsigned char response[20] = {0};
+	const unsigned char *Tx_buf = buff;
+	long long addr = 0;
+	u16 sizeBlk = 512;
+	addr >>= 9;
+ 
+	S3C2440_SDI* sdi = S3C2440_GetBase_SDI();
+
+	int block = count;
+	int wt_cnt = 0;
+	int status = 0;
+
+	sdi->SDIDTimer=0x7fffff;		// Set timeout count
+	sdi->SDIBSize=0x200;			// 512byte(128word)
+	sdi->SDIFSTA = sdi->SDIFSTA|(1<<16); // FIFO reset
+
+	//************************************************************************
+	sdi->SDIFSTA = sdi->SDIFSTA | (1<<16);
+	sdi->SDIDatCon = (2<<22)|(1<<20)|(1<<17)|(1<<16)|(1<<14)|(3<<12)|(block<<0);
+
+	int CMD = 24;
+	if (block>=2) CMD=25;
+
+	if ( SD_API_STATUS_SUCCESS != SendCommand(CMD, sector, ResponseR1, FALSE))
+	{
+		printf("cmd24 error");
 	}
 	if ( SD_API_STATUS_SUCCESS != GetCommandResponse(response, ResponseR1))
 	{
-		printf("cmd17 response error");
+		printf("cmd24 response error");
 	}
 	sdi->SDICmdSta=0xa00; // Clear cmd_end(with rsp)       
 
-	printf("1111\n");
-	while(rd_cnt<128*block) // 512*block bytes 
-	{ 
-		if((sdi->SDIDatSta&0x20)==0x20) // Check timeout  
-		{ 
-			sdi->SDIDatSta=(0x1<<0x5);  // Clear timeout flag 
-			break; 
-		} 
-		status=sdi->SDIFSTA; 
-		if((status&0x1000)==0x1000) // Is Rx data? 
-		{ 
-			u32 dat = sdi->SDIDAT;
-			*Rx_buffer++= dat& 0xFF; 
-			*Rx_buffer++= (dat& 0xFF00) >> 8; 
-			*Rx_buffer++= (dat& 0xFF0000) >> 16;  
-			*Rx_buffer++= (dat& 0xFF000000) >> 24;  
-			rd_cnt++; 
-		} 
+	while(wt_cnt<sizeBlk*block/4)  
+	{
+		status=sdi->SDIFSTA;
+		if((status&0x2000)==0x2000) 
+		{
+			//sdi->SDIDAT=(*Tx_buf) | *(Tx_buf+1)<<8 | *(Tx_buf+2)<<16 | *(Tx_buf+3)<<24 ;    
+			sdi->SDIDAT=(*Tx_buf)<<24 | *(Tx_buf+1)<<16 | *(Tx_buf+2)<<8 | *(Tx_buf+3)<<0 ;    
+			Tx_buf+=4;
+			wt_cnt++;
+			//Uart_Printf("Block No.=%d, wt_cnt=%d\n",block,wt_cnt);
+		}
 	}
-	printf("222\n");
 
-	 finish = sdi->SDIDatSta;
+	int finish = sdi->SDIDatSta;
 	// Chek timeout or data end
 	while( !( ((finish&0x10)==0x10) | ((finish&0x20)==0x20) ))  
 		finish=sdi->SDIDatSta;
-
-	printf("333\n");
 
 	if( (finish&0xfc) != 0x10 )
 	{
@@ -500,37 +578,74 @@ SD_Error sdio_Initialize(void)
 		sdi->SDIDatSta=0xec;  // Clear error state
 		return 0;
 	}
-	//return 1;
 
 	sdi->SDIDatCon = sdi->SDIDatCon &~(7<<12);   //YH 040220, Clear Data Transfer mode => no operation, Cleata Data Transfer start
-	sdi->SDIDatSta=sdi->SDIDatSta&0x200;  //Clear Rx FIFO Last data Ready, YH 040221
 	sdi->SDIDatSta=0x10;  // Clear data Tx/Rx end
 
-	for (int nIndex = 0; nIndex < 512; nIndex++)
+	if(block>1)
 	{
-		printf("%x ", buf[nIndex]);
+		//--Stop cmd(CMD12)          
+		sdi->SDIDatCon=(1<<18)|(1<<17)|(0<<16)|(1<<14)|(1<<12)|(block<<0);  //YH  040220                                                           
+
+
+		if ( SD_API_STATUS_SUCCESS != SendCommand(12, sector, ResponseR1b, FALSE))
+		{
+			printf("cmd24 error");
+		}
+		if ( SD_API_STATUS_SUCCESS != GetCommandResponse(response, ResponseR1b))
+		{
+			printf("cmd24 response error");
+		}
+
+		sdi->SDICmdSta=0xa00; // Clear cmd_end(with rsp)
+
+
+		int finish = sdi->SDIDatSta;
+		// Chek timeout or data end
+		while( !( ((finish&0x08)==0x08) | ((finish&0x20)==0x20) ))  
+			finish=sdi->SDIDatSta;
+
+		if( (finish&0xfc) != 0x08 )
+		{
+			printf("DATA:finish=0x%x\n", finish);
+			sdi->SDIDatSta=0xf4;  // Clear error state
+			return 0;
+		}
+
+		sdi->SDIDatSta=0x08;  //! Should be cleared by writing '1'.
 	}
 
+	return SD_OK;
+	//return 1;
+}
+
+SD_Error sdio_DeselectCard(void)
+{
+	if (g_enStatus != SD_CARD_CARD_SELECTED) return SD_STATUS_ERROR;
+
+	unsigned short RCA = 0x0;
+	unsigned char response[6] = {0};
+	sdio_select_card(RCA);
 	// CMD7
 	if ( SD_API_STATUS_SUCCESS != SendCommand(7, 0<<16, ResponseR1b, FALSE))
 	{
-		return SD_COMMAND_ERROR; //printf("CMD9 send error!\n");
+		return SD_COMMAND_ERROR; //printf("CMD7 send error!\n");
 	}
 	if ( SD_API_STATUS_SUCCESS != GetCommandResponse(&response[0], ResponseR1b))
 	{
-		return SD_RESPONSE_ERROR; //printf("CMD9 ror!\n");
+		return SD_RESPONSE_ERROR; //printf("CMD7 ror!\n");
 	}
 	printf("cmd7 response is:\n");
 	for (int i = 20-1; i >= 0; i--)
 	{
 		printf("%x ", response[i]);
 	}
-	sdi->SDICmdSta=0x800; // Clear cmd_end(no rsp)
 
-	while(1)
-	{
-	}
+	g_enStatus = SD_CARD_STANDBY;
+	return SD_OK;
 }
+
+
 
 SD_Error SD_GetCardInfo(SD_CardInfo *cardinfo)
 { 
@@ -662,8 +777,8 @@ SD_API_STATUS SendCommand(short Cmd, int Arg, short respType, BOOL bDataTransfer
 	S3C2440_SDI* sdi = S3C2440_GetBase_SDI();
 	sdi->SDICmdArg = Arg;
 
-	printf("SendCommand (0x%04x, 0x%08x, 0x%04x, 0x%x) starts\r\n",                       
-				Cmd, Arg, respType, bDataTransfer);
+	//printf("SendCommand (0x%04x, 0x%08x, 0x%04x, 0x%x) starts\r\n",                       
+	//			Cmd, Arg, respType, bDataTransfer);
 	//----- 1. Reset any pending status flags -----
 	sdi->SDICmdSta = (CRC_CHECK_FAILED | COMMAND_SENT | COMMAND_TIMED_OUT | RESPONSE_RECEIVED);                       
 
@@ -683,7 +798,7 @@ SD_API_STATUS SendCommand(short Cmd, int Arg, short respType, BOOL bDataTransfer
 	switch(respType)  
 	{
 		case NoResponse:                // Response is not required, but make sure the command was sent
-			printf("SendCommand no response required\r\n");
+			//printf("SendCommand no response required\r\n");
 			sdi->SDICmdCon = START_COMMAND | COMMAND_START_BIT | (Cmd & MAX_CMD_VALUE);
 
 			while(!(sdi->SDICmdSta & COMMAND_SENT))
@@ -691,20 +806,20 @@ SD_API_STATUS SendCommand(short Cmd, int Arg, short respType, BOOL bDataTransfer
 				dwWaitCount++;
 				if( dwWaitCount > WAIT_TIME )
 				{
-					printf("SDHCD:SendCommand() - timeout waiting for command completion!\r\n");
+					//printf("SDHCD:SendCommand() - timeout waiting for command completion!\r\n");
 					return SD_API_STATUS_RESPONSE_TIMEOUT;
 				}
 
 				/*
 				if( !IsCardPresent() )
 				{
-					printf("SDHCD:SendCommand() - Card ejected!\r\n");
+					//printf("SDHCD:SendCommand() - Card ejected!\r\n");
 					return SD_API_STATUS_DEVICE_REMOVED;
 				}
 				*/
 				if(sdi->SDICmdSta & COMMAND_TIMED_OUT)
 				{
-					printf("SDHCD:SendCommand() - Command 0x%04x timed out!\r\n", Cmd);
+					//printf("SDHCD:SendCommand() - Command 0x%04x timed out!\r\n", Cmd);
 					sdi->SDICmdSta = COMMAND_TIMED_OUT;                // Clear the error
 					return SD_API_STATUS_RESPONSE_TIMEOUT;
 				}
@@ -719,19 +834,19 @@ SD_API_STATUS SendCommand(short Cmd, int Arg, short respType, BOOL bDataTransfer
 		case ResponseR5:
 		case ResponseR6:
 		case ResponseR7:
-			printf("sendSDICommand short response required\r\n");
+			//printf("sendSDICommand short response required\r\n");
 			//      sdi->SDICmdCon = uiNewCmdRegVal | WAIT_FOR_RESPONSE | START_COMMAND | COMMAND_START_BIT | (Cmd & MAX_CMD_VALUE);
 			sdi->SDICmdCon = WAIT_FOR_RESPONSE | START_COMMAND | COMMAND_START_BIT | (Cmd & MAX_CMD_VALUE);
 			break;
 
 		case ResponseR2:                // Long response required       
-			printf("sendSDICommand long response required\r\n");
+			//printf("sendSDICommand long response required\r\n");
 			//      sdi->SDICmdCon = uiNewCmdRegVal | LONG_RESPONSE | WAIT_FOR_RESPONSE | START_COMMAND | COMMAND_START_BIT | (Cmd & MAX_CMD_VALUE);
 			sdi->SDICmdCon =  LONG_RESPONSE | WAIT_FOR_RESPONSE | START_COMMAND | COMMAND_START_BIT | (Cmd & MAX_CMD_VALUE);
 			break;
 
 		default:
-			printf("SDHCD:sendSDICommand() - Invalid response type.  Command not sent!\r\n");
+			//printf("SDHCD:sendSDICommand() - Invalid response type.  Command not sent!\r\n");
 			return SD_API_STATUS_NOT_IMPLEMENTED;
 			break;
 	}
@@ -753,7 +868,7 @@ Returns:        SD_API_STATUS status code.
 //SD_API_STATUS GetCommandResponse(PSD_BUS_REQUEST pRequest)
 SD_API_STATUS GetCommandResponse(unsigned char* pRequest, int Response)
 {
-	printf("GetCommandResponse started\r\n");
+	//printf("GetCommandResponse started\r\n");
 	unsigned char *              respBuff = pRequest;       // response buffer
 	int dwWaitCount = 0;
 	S3C2440_SDI* sdi = S3C2440_GetBase_SDI();
@@ -764,49 +879,49 @@ SD_API_STATUS GetCommandResponse(unsigned char* pRequest, int Response)
 		dwWaitCount++;
 		if( dwWaitCount > WAIT_TIME )
 		{
-			printf("SDHCD:GetCommandResponse() - timeout waiting for command response!\r\n");
+			//printf("SDHCD:GetCommandResponse() - timeout waiting for command response!\r\n");
 			return SD_API_STATUS_RESPONSE_TIMEOUT;
 		}
 
 		/*
 		if( !IsCardPresent() )
 		{
-			printf("SDHCD:GetCommandResponse() - Card ejected!\r\n");
+			//printf("SDHCD:GetCommandResponse() - Card ejected!\r\n");
 			return SD_API_STATUS_DEVICE_REMOVED;
 		}
 		*/
 		if(sdi->SDICmdSta & COMMAND_TIMED_OUT)
 		{
 			sdi->SDICmdSta = COMMAND_TIMED_OUT;                // Clear the error
-			printf("GetCommandResponse returned SD_API_STATUS_RESPONSE_TIMEOUT (COMMAND_TIMED_OUT)\r\n");
+			//printf("GetCommandResponse returned SD_API_STATUS_RESPONSE_TIMEOUT (COMMAND_TIMED_OUT)\r\n");
 			return SD_API_STATUS_RESPONSE_TIMEOUT;
 		}
 
 		if(sdi->SDIDatSta & CRC_CHECK_FAILED)
 		{
 			sdi->SDIDatSta = CRC_CHECK_FAILED;             // Clear the error
-			printf("GetCommandResponse returned SD_API_STATUS_CRC_ERROR (CRC_CHECK_FAILED)\r\n");
+			//printf("GetCommandResponse returned SD_API_STATUS_CRC_ERROR (CRC_CHECK_FAILED)\r\n");
 			return SD_API_STATUS_CRC_ERROR;
 		}
 
 		if(sdi->SDIDatSta & DATA_TRANSMIT_CRC_ERROR)
 		{
 			sdi->SDIDatSta = DATA_TRANSMIT_CRC_ERROR;      // Clear the error
-			printf("getSDICommandResponse returned SD_API_STATUS_CRC_ERROR (DATA_TRANSMIT_CRC_ERROR)\r\n");
+			//printf("getSDICommandResponse returned SD_API_STATUS_CRC_ERROR (DATA_TRANSMIT_CRC_ERROR)\r\n");
 			return SD_API_STATUS_CRC_ERROR;
 		}
 
 		if(sdi->SDIDatSta & DATA_RECEIVE_CRC_ERROR)
 		{
 			sdi->SDIDatSta = DATA_RECEIVE_CRC_ERROR;           // Clear the error
-			printf("GetCommandResponse returned SD_API_STATUS_CRC_ERROR (DATA_RECEIVE_CRC_ERROR)\r\n");
+			//printf("GetCommandResponse returned SD_API_STATUS_CRC_ERROR (DATA_RECEIVE_CRC_ERROR)\r\n");
 			return SD_API_STATUS_CRC_ERROR;
 		}
 
 		if(sdi->SDIDatSta & DATA_TIME_OUT)
 		{
 			sdi->SDIDatSta = DATA_TIME_OUT;                    // Clear the error
-			printf("GetCommandResponse returned SD_API_STATUS_DATA_TIMEOUT (DATA_TIME_OUT)\r\n");
+			//printf("GetCommandResponse returned SD_API_STATUS_DATA_TIMEOUT (DATA_TIME_OUT)\r\n");
 			return SD_API_STATUS_DATA_TIMEOUT;
 		}
 	}
@@ -895,11 +1010,11 @@ SD_API_STATUS GetCommandResponse(unsigned char* pRequest, int Response)
 			break;
 
 		default:
-			printf("SDHCD:GetCmdResponse(): Unrecognized response type!\r\n");
+			//printf("SDHCD:GetCmdResponse(): Unrecognized response type!\r\n");
 			break;
 	}
 
-	printf("GetCommandResponse returned SD_API_STATUS_SUCCESS\r\n");
+	//printf("GetCommandResponse returned SD_API_STATUS_SUCCESS\r\n");
 	return SD_API_STATUS_SUCCESS;
 	//-path "$ROOT/*/*"                                                 -o 
 }

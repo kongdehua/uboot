@@ -10,7 +10,13 @@ objs= head.o \
 			xyzModem.o \
 			crc16.o \
 			sdio.o \
+			fatfs/diskio.o \
+			fatfs/ff.o \
+			fatfs/option/syscall.o \
+			fatfs/option/unicode.o \
 			cmd_download.o \
+			cmd_sdio.o \
+			cmd_file.o \
 			vsprintf.o
 
 gccincdir := $(shell $(CC) -print-file-name=include)
@@ -22,10 +28,10 @@ main.bin : $(objs)
 	arm-linux-objdump -D -m arm main_elf > main.dis
 
 %.o:%.c
-	arm-linux-gcc -g -c -o $@ $< -fno-builtin -ffreestanding -nostdinc -isystem $(gccincdir) 
+	arm-linux-gcc -g -c -o $@ $< -I. -fno-builtin -ffreestanding -nostdinc -isystem $(gccincdir) 
 
 %.o:%.S
-	arm-linux-gcc -g -c -o $@ $<
+	arm-linux-gcc -g -c -o $@ $< -I.
 
 #-fno-builtin -ffreestanding -nostdinc -isystem $(gccincdir) 
 

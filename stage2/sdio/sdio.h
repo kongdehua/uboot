@@ -182,6 +182,7 @@ typedef enum
 	SD_ERROR,
 	SD_COMMAND_ERROR,
 	SD_RESPONSE_ERROR,
+	SD_STATUS_ERROR,
 	SD_COMMAND8_NO_RESPONSE_ERROR,
 
 	SD_UNKNOWN_ERROR,
@@ -201,10 +202,27 @@ typedef enum
 	SD_API_STATUS_DATA_TIMEOUT
 } SD_API_STATUS;
 
-//int sdio_init(void);
-int sdio_poweron(void);
-SD_Error sdio_Initialize(void);
+typedef enum
+{
+	SD_CARD_UNUSED,
+	SD_CARD_READY,
+	SD_CARD_STANDBY,
+	SD_CARD_CARD_SELECTED,
+} SD_CARD_STATUS;
 
+//int sdio_init(void);
+SD_Error sdio_Initialize(void);
+SD_Error sdio_ScanCard(unsigned short *pRCA);
+SD_Error sdio_SelectCard(unsigned short RCA);
+
+SD_Error sdio_ReadData (      u8 *buff, u32 sector, u8 count);
+SD_Error sdio_WriteData(const u8 *buff, u32 sector, u8 count);
+
+SD_Error sdio_DeselectCard(void);
+
+SD_Error sdio_setDataBusWidth(unsigned short RCA, int width);
+
+int sdio_poweron(void);
 int sdio_cmdSendSuccess();
 int sdio_cmdResponseSuccess();
 
