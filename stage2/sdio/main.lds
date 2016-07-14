@@ -12,8 +12,8 @@ SECTIONS
 		head.o(.text)
 			timer.o(.text)
 			nand.o(.text)
-			led.o(.text)
 			main.o(.text)
+			led.o(.text)
 			*(.text)
 	}
 

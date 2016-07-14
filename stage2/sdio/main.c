@@ -20,6 +20,7 @@ void init_baudrate()
 }
 
 int had_ctrlc (void);
+void clear_ctrlc (void);
 /* test if ctrl-c was pressed */
 static int ctrlc_disabled = 0;  /* see disable_ctrl() */
 static int ctrlc_was_pressed = 0;
@@ -250,7 +251,7 @@ int run_command (const char *cmd, int flag)
   int repeatable = 1;
   int rc = 0;
 
-  //clear_ctrlc();    /* forget any previous Control C */
+  clear_ctrlc();    /* forget any previous Control C */
 
   if (!cmd || !*cmd) {
     return -1;  /* empty command */
@@ -457,6 +458,10 @@ int main()
 
     if (len == -1)
       puts ("<INTERRUPT>\n");
+		else if (len == -2)
+		{
+			printf("<state><waiting>command</waiting></state>\n");
+		}
     else
 			run_command (lastcommand, flag);
 }
@@ -519,7 +524,7 @@ int main()
 		//if (ch <= '9' && ch >= '0')
 		if (ch == '\r')
 			ch = '\n';
-		serial_putc(ch);
+		serial_putc(ch, 1);
 	};
 
 	return 0;

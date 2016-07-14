@@ -40,7 +40,7 @@ typedef   u32   uint32_t;
 	}\
 	while(0)
 
-#define CFG_PROMPT    "OpenJTAG> "  /* Monitor Command Prompt */
+#define CFG_PROMPT    "OpenKDH> "  /* Monitor Command Prompt */
 #define CFG_CBSIZE    256   /* Console I/O Buffer Size  */
 #define CFG_PBSIZE (CFG_CBSIZE+sizeof(CFG_PROMPT)+16) /* Print Buffer Size */
 #define CFG_MAXARGS   16    /* max number of command args */

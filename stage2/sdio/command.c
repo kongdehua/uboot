@@ -30,6 +30,7 @@
 #include "vsprintf.h"
 #include "string.h"
 #include "serial.h"
+#include "timer.h"
 
 #include "command.h"
 
