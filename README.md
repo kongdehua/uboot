@@ -7,6 +7,5 @@ All description about this git repository
 
 ![image](https://github.com/kongdehua/uboot/raw/master/image/firstExample_head.png "title")
 
-##				 https://github.com/kongdehua/uboot/blob/master/image/firstExample_head.png
 
 
