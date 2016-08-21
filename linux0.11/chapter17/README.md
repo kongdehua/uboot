@@ -122,4 +122,25 @@ http://oldlinux.org/Linux.old/bochs/linux-0.11-devel-050518.zip
 * bochs-2.2.pre4.exe是windows操作系统平台下的安装程序。
 * bochsour.txt是Bochs系统运行时自动产生的日志文件。其中包含Bochs运行时各种状态信息。在运行Bochs遇到问题时，可以查看这个文件的内容来初步判定问题的原因。
 * bochsrc-fda.bxrc是Bochs的配置文件。这个配置文件用于从Bochs虚拟A盘（/dev/fd0）启动Linux0.11系统，即内核映像文件已设置在虚拟A盘中，并且要求随后根文件系统被替换插入当前虚拟启动驱动器中。在引导启动过程中，它会要求我们在A盘中插入软盘根文件系统盘（rootimage-0.11）。这个配置文件将使用内核映像文件bootimage-0.11。双击配置文件即可运行该配置的linux0.11系统
-* bochsrc-fdb
+* bochsrc-fdb.bxrc也是运行Bochs的配置文件。该配置文件已经把软盘根文件系统盘（rootimage-0.11）设置成在B盘（/dev/fd1）中，因此当现实要求我们插入根文件系统盘时，可直接按回车，这个配置文件将使用内核映像文件bootimage-0.11-fd。双击这个配置文件即可运行该配置的Linux 0.11系统。
+* bochsrc-hd.bxrc这也是一个设置成从A盘启动的配置文件，但是会使用硬盘（c盘）映像文件中的根文件系统（hdc-0.11-new.img）。这个配置文件将使用内核映像文件bootimage-0.11-hd。双击这个配置文件即可运行该配置的Linux 0.11系统。
+* bochsrc-hdboot.bxrc 这是一个从虚拟硬盘（hdc-0.11-new.img）引导启动Linux 0.11系统的配置文件，因此所使用的引导启动内核映像文件已在虚拟硬盘中（/usr/src/linux/image）。
+* bootimage-0.11 是编译内核生成的映像文件。其中包含了整个内核的代码和数据，包括软盘启动引导扇区的代码。双击这个配置文件即可运行该配置的Linux 0.11系统
+* bootimage-0.11-fd也是编译内核生成的映像文件。与bootimage-0.11文件的主要区别在于其中引导扇区（最初512字节）中的第509、510字节的根文件系统设备号已经被设置成B盘（/dev/fd1），设备号是0x021D。其它方面完全和bootimage-0.11文件一样。
+* bootimage-0.11-hd 是用于使用虚拟硬盘上根文件系统的内核映像文件，即该文件的第509、510字节的根文件系统设备号已经被设置成C盘（/dev/hd1），设备号是0x0301.
+
+## 2.3 运行Linux 0.1x系统
+在Bochs中运行Linux 0.1x系统非常简单，你只要双击相应的Bochs配置文件即可运行。每个配置文件中已经设置好了运行时模拟的PC机环境。你可以利用任何文本编辑器来编辑配置文件。运行Linux 0.11系统，相应的配置文件中通常只包含以下几行必要信息：
+
+```
+--------------------------------------------------
+romimage: file=$BXSHARE\BISO-bochs-latest, address=0xf0000
+vgaromimage: $BXSHARE\VGABIOS-elpin-2.40
+megs: 16
+floppya: 1_44="bootimage-0.11", status=inserted
+ata0-master: type=disk, path="hdc.img", mode=flat, cylinders=520, heads=16, spt=63
+boot: a
+--------------------------------------------------
+```
+
+前两行指明所模拟的PC机的ROM BIOS和VGA显示ROM程序，一般用不着修改。第三hang指明PC机的物理内存容量，设置为16MB。因为默认的Linux0.11最多支持16M，设置大了也没用。
